@@ -1,0 +1,124 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Inventory Service Contract",
+    "description": "Contrato para la gestión del inventario y reserva de stock.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/products": {
+      "get": {
+        "summary": "Obtener catálogo de productos",
+        "responses": {
+          "200": {
+            "description": "Lista de productos y su stock disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "name": { "type": "string" },
+                      "price": { "type": "number" },
+                      "stock": { "type": "integer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/reserve": {
+      "post": {
+        "summary": "Reservar stock para una compra temporalmente",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["productId", "quantity"],
+                "properties": {
+                  "productId": { "type": "string" },
+                  "quantity": { "type": "integer", "minimum": 1 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stock reservado con éxito.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "reserved" },
+                    "reservationId": { "type": "string", "example": "res-94827" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Stock insuficiente o producto inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "failed" },
+                    "message": { "type": "string", "example": "Insufficient stock for product P1" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/release": {
+      "post": {
+        "summary": "Liberar una reserva de stock en caso de fallo transaccional",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["reservationId"],
+                "properties": {
+                  "reservationId": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reserva liberada con éxito.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "released" },
+                    "reservationId": { "type": "string", "example": "res-94827" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reserva no encontrada."
+          }
+        }
+      }
+    }
+  }
+}

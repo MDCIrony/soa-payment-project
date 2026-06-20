@@ -1,0 +1,60 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Payment Service Contract",
+    "description": "Contrato para el procesamiento de pagos transaccionales.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/payments/charge": {
+      "post": {
+        "summary": "Procesar cargo a una cuenta/tarjeta bancaria",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["amount", "cardNumber"],
+                "properties": {
+                  "amount": { "type": "number", "minimum": 0.01 },
+                  "cardNumber": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{4}$" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pago aprobado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "approved" },
+                    "transactionId": { "type": "string", "example": "tx-847291" }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Pago declinado (Fondos insuficientes u otro motivo).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "declined" },
+                    "reason": { "type": "string", "example": "Insufficient funds" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

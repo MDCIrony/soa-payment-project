@@ -1,0 +1,47 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Notification Service Contract",
+    "description": "Contrato para el envío de notificaciones y alertas de estado.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/notifications/send": {
+      "post": {
+        "summary": "Enviar notificación por correo simulado",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["to", "subject", "body"],
+                "properties": {
+                  "to": { "type": "string", "format": "email" },
+                  "subject": { "type": "string" },
+                  "body": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notificación enviada y encolada con éxito.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "sent" },
+                    "notificationId": { "type": "string", "example": "not-19283" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
