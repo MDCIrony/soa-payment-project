@@ -1,0 +1,112 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "ESB Gateway (Enterprise Service Bus) Contract",
+    "description": "Contrato unificado expuesto al cliente. Centraliza el acceso al catálogo y la orquestación de checkout.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/catalog": {
+      "get": {
+        "summary": "Obtener catálogo (Enrutado y mediado por el ESB)",
+        "description": "El ESB recibe la petición, consulta al Servicio de Inventario usando su mapeo de registro de servicios, y retorna el resultado filtrado/mediado.",
+        "responses": {
+          "200": {
+            "description": "Catálogo devuelto con éxito.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "name": { "type": "string" },
+                      "price": { "type": "number" },
+                      "stock": { "type": "integer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/checkout": {
+      "post": {
+        "summary": "Iniciar orquestación de compra",
+        "description": "El ESB orquesta la compra: reserva stock, realiza el pago y envía la notificación. Maneja transacciones de compensación ante fallas.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["productId", "quantity", "email", "cardNumber"],
+                "properties": {
+                  "productId": { "type": "string" },
+                  "quantity": { "type": "integer" },
+                  "email": { "type": "string", "format": "email" },
+                  "cardNumber": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout finalizado con éxito.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": true },
+                    "message": { "type": "string", "example": "Order processed successfully" },
+                    "details": {
+                      "type": "object",
+                      "properties": {
+                        "reservationId": { "type": "string" },
+                        "transactionId": { "type": "string" },
+                        "notificationId": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error en el inventario (falta de stock).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": false },
+                    "message": { "type": "string", "example": "Inventory reservation failed: Insufficient stock" }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Error en el pago (tarjeta rechazada). Se realiza rollback/compensación de inventario automáticamente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean", "example": false },
+                    "message": { "type": "string", "example": "Payment failed: Insufficient funds. Stock reservation has been released." }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
