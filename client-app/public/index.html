@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOA E-Commerce - Dashboard de Orquestación</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="glow-bg"></div>
+  <header>
+    <div class="logo-container">
+      <div class="esb-node">ESB</div>
+      <div class="title-container">
+        <h1>SOA E-Commerce Platform</h1>
+        <p>Dashboard de Integración y Orquestación de Servicios</p>
+      </div>
+    </div>
+    <div class="system-status">
+      <span class="status-indicator online"></span>
+      <span class="status-text">Infraestructura SOA Lista</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Columna Izquierda: Tienda y Checkout -->
+    <section class="store-section card">
+      <h2><span class="step-badge">1</span> Catálogo de Productos</h2>
+      <p class="section-desc">Consumido desde el Servicio de Inventario mediante el ESB</p>
+      <div id="catalog-container" class="products-grid">
+        <!-- Generado dinámicamente -->
+        <div class="loading">Cargando productos del catálogo...</div>
+      </div>
+
+      <div class="checkout-panel">
+        <h2><span class="step-badge">2</span> Datos de Simulación</h2>
+        <p class="section-desc">Configura los parámetros para disparar la transacción</p>
+        
+        <div class="form-group">
+          <label for="checkout-email">Correo del Cliente</label>
+          <input type="email" id="checkout-email" value="cliente@empresa.com" placeholder="correo@ejemplo.com">
+        </div>
+
+        <div class="form-group">
+          <label for="checkout-card">Número de Tarjeta</label>
+          <input type="text" id="checkout-card" value="5540-1234-5678-9012" placeholder="XXXX-XXXX-XXXX-XXXX">
+          <small class="helper-text">
+            💡 <strong>Tip de Simulación:</strong><br>
+            - Tarjeta normal (ej. <code>5540...</code>) -> Compra exitosa.<br>
+            - Tarjeta que inicia en <code>4000</code> -> Error de Pago y <strong>Rollback / Compensación</strong> automática de stock en el Inventario.
+          </small>
+        </div>
+      </div>
+    </section>
+
+    <!-- Columna Derecha: Traza del ESB y Notificaciones -->
+    <section class="trace-section card">
+      <h2><span class="step-badge">3</span> Traza de Orquestación ESB</h2>
+      <p class="section-desc">Seguimiento en tiempo real del flujo de integración (Saga Pattern)</p>
+      
+      <div id="esb-trace-container" class="trace-timeline empty">
+        <div class="empty-state">
+          <p>Selecciona un producto y presiona "Comprar" para visualizar la orquestación en tiempo real.</p>
+        </div>
+      </div>
+
+      <div class="activity-logs">
+        <div class="logs-header">
+          <h3>Notificaciones Recientes (Email simulado)</h3>
+          <button id="btn-refresh-notifications" class="btn-secondary">Actualizar</button>
+        </div>
+        <div id="notifications-container" class="logs-terminal">
+          <!-- Historial de emails -->
+          <div class="terminal-line placeholder">Esperando eventos de notificación...</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Arquitectura de Software - Universidad | Estilo Arquitectónico SOA (Service-Oriented Architecture) con Docker</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
