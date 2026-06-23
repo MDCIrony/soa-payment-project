@@ -26,13 +26,13 @@ Este sistema aplica los principios de la **Arquitectura Orientada a Servicios (S
 graph TD
     Client[Cliente / Consumidor] <-->|1. Petición Unificada| ESB[Enterprise Service Bus - ESB]
     
-    subgraph Registro e Infraestructura SOA (soa-network)
+    subgraph "Registro e Infraestructura SOA (soa-network)"
         ESB <-->|Mapea y Orquesta| Inventory[Servicio de Inventario]
         ESB <-->|Mapea y Orquesta| Payment[Servicio de Pagos]
         ESB -->|Mapea y Enruta| Notification[Servicio de Notificación]
     end
 
-    subgraph Observabilidad Integrada (Monitoreo)
+    subgraph "Observabilidad Integrada (Monitoreo)"
         Prometheus[(Prometheus)] -.->|Scrape /metrics| ESB
         Prometheus -.->|Scrape /metrics| Inventory
         Prometheus -.->|Scrape /metrics| Payment
