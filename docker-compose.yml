@@ -1,0 +1,132 @@
+version: '3.8'
+
+networks:
+  soa-network:
+    driver: bridge
+
+services:
+  # App Cliente (Consumidor)
+  client-app:
+    build:
+      context: ./client-app
+      dockerfile: Dockerfile
+    container_name: client-app
+    ports:
+      - "3000:3000"
+    networks:
+      - soa-network
+    environment:
+      - PORT=3000
+      - ESB_URL=http://localhost:4000
+    depends_on:
+      - esb-gateway
+
+  # Bus de Servicios (ESB)
+  esb-gateway:
+    build:
+      context: ./esb-gateway
+      dockerfile: Dockerfile
+    container_name: esb-gateway
+    ports:
+      - "4000:4000"
+    networks:
+      - soa-network
+    environment:
+      - PORT=4000
+      - INVENTORY_SERVICE_URL=http://inventory-service:3001
+      - PAYMENT_SERVICE_URL=http://payment-service:3002
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3003
+    depends_on:
+      - inventory-service
+      - payment-service
+      - notification-service
+
+  # Servicio de Inventario
+  inventory-service:
+    build:
+      context: ./inventory-service
+      dockerfile: Dockerfile
+    container_name: inventory-service
+    ports:
+      - "3001:3001"
+    networks:
+      - soa-network
+    environment:
+      - PORT=3001
+
+  # Servicio de Pagos
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: payment-service
+    ports:
+      - "3002:3002"
+    networks:
+      - soa-network
+    environment:
+      - PORT=3002
+
+  # Servicio de Notificación
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    ports:
+      - "3003:3003"
+    networks:
+      - soa-network
+    environment:
+      - PORT=3003
+
+  # --- INFRAESTRUCTURA DE OBSERVABILIDAD (PROMETHEUS + GRAFANA + LOKI + PROMTAIL) ---
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - soa-network
+    depends_on:
+      - esb-gateway
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - soa-network
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - soa-network
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3005:3000"
+    networks:
+      - soa-network
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+      - loki
