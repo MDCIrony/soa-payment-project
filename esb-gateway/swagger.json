@@ -107,6 +107,48 @@
           }
         }
       }
+    },
+    "/api/esb-logs": {
+      "get": {
+        "summary": "Obtener historial de trazas de orquestación del ESB",
+        "description": "Retorna el historial completo de eventos y pasos ejecutados por el orquestador en transacciones previas.",
+        "responses": {
+          "200": {
+            "description": "Historial de logs obtenido con éxito.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "Obtener historial de notificaciones (Enrutado por el ESB)",
+        "description": "El ESB recibe la petición y la enruta directamente al Servicio de Notificaciones para obtener las notificaciones enviadas.",
+        "responses": {
+          "200": {
+            "description": "Historial de notificaciones obtenido con éxito.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
