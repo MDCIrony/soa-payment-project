@@ -8,18 +8,19 @@ El proyecto implementa un flujo transaccional de compras (E-Commerce Order Proce
 
 ## 📂 Estructura del Repositorio (Desacoplada y Modular)
 
-El código de cada microservicio está estructurado de forma modular (Model-Controller-Routes) para facilitar su mantenimiento y legibilidad:
+El código de cada microservicio ha sido desacoplado y estructurado de forma altamente modular para mejorar su legibilidad y mantenibilidad, separando la configuración de la aplicación de su ciclo de inicio:
 
 *   **`client-app/`**: Cliente consumidor (HTML/CSS/JS) servido en Express.
-*   **`esb-gateway/`**: Bus de Servicios (ESB) orquestador.
-    *   `config/`: Registro lógico de direcciones de servicios.
-    *   `controllers/`: Lógica central del patrón Saga y ruteo mediado.
-    *   `middlewares/`: Capturador de métricas para Prometheus.
-    *   `routes/`: Rutas mapeadas expuestas al cliente.
-*   **`inventory-service/`**, **`payment-service/`**, **`notification-service/`**: Microservicios de dominio SOA.
-    *   `controllers/`: Implementación del negocio (catálogo, cobros, envío de alertas).
-    *   `middlewares/`: Capturador de métricas.
-    *   `routes/`: Rutas expuestas bajo contratos OpenAPI.
+*   **`esb-gateway/`**, **`inventory-service/`**, **`payment-service/`**, **`notification-service/`**: Microservicios y gateway del ecosistema.
+    *   `server.js`: Punto de entrada ultra-limpio; únicamente levanta el servidor HTTP en el puerto parametrizado.
+    *   `app.js`: Configura la aplicación Express, monta los middlewares globales de seguridad/rutas y orquesta la inicialización de métricas y Swagger UI.
+    *   `config/`: Parámetros y registros lógicos (por ejemplo, URLs de servicios dependientes en el ESB).
+    *   `controllers/`: Lógica de negocio pura (por ejemplo, orquestación del patrón Saga, control de stock, cobros o alertas de emails).
+    *   `middlewares/`:
+        *   `metrics.js`: Capturador nativo de métricas HTTP expuestas en `/metrics` para Prometheus.
+        *   `swagger.js`: Módulo desacoplado para inyectar y configurar Swagger UI mediante CDN sin ensuciar la lógica del servidor.
+    *   `routes/`: Definición y mapeo de endpoints.
+    *   `swagger.json`: Contrato formal de API en formato OpenAPI 3.0.
 
 ---
 
@@ -59,20 +60,24 @@ graph TD
 
 ## 🔄 El Patrón Saga y Flujo de Checkout
 
-En un entorno distribuido, cada microservicio posee su propia base de datos (o almacén en memoria). No podemos usar transacciones ACID de bases de datos relacionales tradicionales. Para garantizar la consistencia, implementamos el **Patrón Saga basado en Orquestación**.
+En arquitecturas distribuidas de microservicios (SOA), cada componente cuenta con su propia base de datos (o persistencia en memoria local) para garantizar un acoplamiento mínimo. Debido a esto, **no es posible utilizar transacciones atómicas ACID tradicionales de bases de datos relacionales** que involucren múltiples servicios. 
 
-### 1. ¿Cómo funciona la Saga en este proyecto?
-El **ESB Gateway** actúa como el orquestador central que ejecuta una secuencia de transacciones locales en cada servicio:
+Para mantener la consistencia eventual entre sistemas independientes, implementamos el **Patrón Saga basado en Orquestación**, coordinado centralmente por el **ESB Gateway**.
 
-*   **Paso 1: Reserva de Stock** ➡️ El ESB llama a `inventory-service` (`POST /inventory/reserve`). Se aparta el stock temporalmente.
-*   **Paso 2: Procesamiento del Pago** ➡️ El ESB calcula el monto y llama a `payment-service` (`POST /payments/charge`).
-*   **Paso 3 (Flujo Feliz): Confirmación** ➡️ Si el pago es aprobado, el ESB completa el checkout y llama a `notification-service` (`POST /notifications/send`) para enviar el correo de confirmación.
+### 1. Flujo del Checkout (Camino Feliz - Happy Path)
+Cuando un cliente realiza un checkout a través del dashboard, el orquestador en [esb-gateway/controllers/esb.js](file:///home/mdcast/Escritorio/PrivateProjects/arquitectura/soa-project/esb-gateway/controllers/esb.js) ejecuta secuencialmente las siguientes transacciones locales:
 
-### 2. Transacción de Compensación (Compensating Transaction)
-Si el **Paso 2 (Pago)** falla (por ejemplo, fondos insuficientes o tarjeta declinada):
-1.  La Saga detecta el error en el orquestador (bloque catch).
-2.  El ESB ejecuta una **transacción de compensación** (rollback lógico) llamando a `inventory-service` (`POST /inventory/release`) para liberar y reintegrar el stock que había sido apartado en el paso 1.
-3.  El ESB solicita enviar una alerta de fallo al usuario final (`POST /notifications/send`).
+1.  **Reserva de Stock**: Llama a `inventory-service` (`POST /inventory/reserve`). Si hay suficiente stock, el servicio descuenta temporalmente la cantidad del inventario y responde con un `reservationId`.
+2.  **Cálculo y Procesamiento de Pago**: El orquestador obtiene el precio unitario del producto, calcula el total de la compra y llama a `payment-service` (`POST /payments/charge`). Si el pago se procesa correctamente, responde con un `transactionId`.
+3.  **Confirmación y Notificación**: Tras el éxito de los dos pasos anteriores, la transacción se consolida y se llama a `notification-service` (`POST /notifications/send`) para enviar un email de confirmación con los detalles de la compra al usuario.
+
+### 2. Transacción de Compensación (Rollback Transaccional)
+El orquestador está diseñado para recuperarse ante fallos de manera automática ejecutando transacciones inversas de compensación (Rollback lógico):
+
+*   **Fallo en el Inventario**: Si el producto no tiene suficiente stock o no existe, el primer paso falla de inmediato. La Saga aborta la transacción y el orquestador pide a `notification-service` que envíe un correo alertando sobre la falta de stock. No se realiza ningún cargo financiero.
+*   **Fallo en el Pago**: Si el pago es declinado (por ejemplo, si el número de tarjeta inicia con `4000`, una regla simulada en nuestro backend), la transacción del paso 2 lanza una excepción. El bloque `catch` del orquestador entra en acción ejecutando la **transacción de compensación**:
+    1.  **Liberación de Inventario**: Llama a `inventory-service` (`POST /inventory/release`) enviando el `reservationId`. El servicio de inventario busca la reserva, devuelve el stock correspondiente al inventario general y destruye el registro de la reserva.
+    2.  **Notificación de Cancelación**: Llama a `notification-service` (`POST /notifications/send`) para enviar un email al cliente alertándole que su pago fue declinado y que el stock reservado ha sido liberado automáticamente para que otros usuarios puedan adquirirlo.
 
 ```mermaid
 sequenceDiagram
