@@ -6,15 +6,20 @@ El proyecto implementa un flujo transaccional de compras (E-Commerce Order Proce
 
 ---
 
-## 📂 Estructura del Repositorio
+## 📂 Estructura del Repositorio (Desacoplada y Modular)
 
-*   **Código de la Solución**:
-    *   [`esb-gateway/`](file:///home/mdcast/Escritorio/PrivateProjects/arquitectura/soa-project/esb-gateway): Bus de Servicios (ESB) en Node.js (registro de servicios, mediación, orquestación SAGA). Expone documentación Swagger en `/docs`.
-    *   [`inventory-service/`](file:///home/mdcast/Escritorio/PrivateProjects/arquitectura/soa-project/inventory-service): Microservicio de catálogo e inventario. Expone documentación Swagger en `/docs`.
-    *   [`payment-service/`](file:///home/mdcast/Escritorio/PrivateProjects/arquitectura/soa-project/payment-service): Microservicio de procesamiento de cobros (mock). Expone documentación Swagger en `/docs`.
-    *   [`notification-service/`](file:///home/mdcast/Escritorio/PrivateProjects/arquitectura/soa-project/notification-service): Microservicio de alertas (mock). Expone documentación Swagger en `/docs`.
-    *   [`client-app/`](file:///home/mdcast/Escritorio/PrivateProjects/arquitectura/soa-project/client-app): Cliente web interactivo en HTML/CSS/JS con traza visual del ESB.
-    *   [`docker-compose.yml`](file:///home/mdcast/Escritorio/PrivateProjects/arquitectura/soa-project/docker-compose.yml): Archivo de orquestación de red y contenedores.
+El código de cada microservicio está estructurado de forma modular (Model-Controller-Routes) para facilitar su mantenimiento y legibilidad:
+
+*   **`client-app/`**: Cliente consumidor (HTML/CSS/JS) servido en Express.
+*   **`esb-gateway/`**: Bus de Servicios (ESB) orquestador.
+    *   `config/`: Registro lógico de direcciones de servicios.
+    *   `controllers/`: Lógica central del patrón Saga y ruteo mediado.
+    *   `middlewares/`: Capturador de métricas para Prometheus.
+    *   `routes/`: Rutas mapeadas expuestas al cliente.
+*   **`inventory-service/`**, **`payment-service/`**, **`notification-service/`**: Microservicios de dominio SOA.
+    *   `controllers/`: Implementación del negocio (catálogo, cobros, envío de alertas).
+    *   `middlewares/`: Capturador de métricas.
+    *   `routes/`: Rutas expuestas bajo contratos OpenAPI.
 
 ---
 
@@ -26,13 +31,13 @@ Este sistema aplica los principios de la **Arquitectura Orientada a Servicios (S
 graph TD
     Client[Cliente / Consumidor] <-->|1. Petición Unificada| ESB[Enterprise Service Bus - ESB]
     
-    subgraph "Registro e Infraestructura SOA (soa-network)"
+    subgraph Registro e Infraestructura SOA (soa-network)
         ESB <-->|Mapea y Orquesta| Inventory[Servicio de Inventario]
         ESB <-->|Mapea y Orquesta| Payment[Servicio de Pagos]
         ESB -->|Mapea y Enruta| Notification[Servicio de Notificación]
     end
 
-    subgraph "Observabilidad Integrada (Monitoreo)"
+    subgraph Observabilidad Integrada (Monitoreo)
         Prometheus[(Prometheus)] -.->|Scrape /metrics| ESB
         Prometheus -.->|Scrape /metrics| Inventory
         Prometheus -.->|Scrape /metrics| Payment
@@ -50,7 +55,57 @@ graph TD
     style Grafana fill:#7c3aed,stroke:#6d28d9,stroke-width:2px,color:#fff
 ```
 
-*El ESB centraliza las integraciones y orquesta de forma secuencial y coordinada a los microservicios, además de manejar las transacciones de compensación ante fallos del flujo.*
+---
+
+## 🔄 El Patrón Saga y Flujo de Checkout
+
+En un entorno distribuido, cada microservicio posee su propia base de datos (o almacén en memoria). No podemos usar transacciones ACID de bases de datos relacionales tradicionales. Para garantizar la consistencia, implementamos el **Patrón Saga basado en Orquestación**.
+
+### 1. ¿Cómo funciona la Saga en este proyecto?
+El **ESB Gateway** actúa como el orquestador central que ejecuta una secuencia de transacciones locales en cada servicio:
+
+*   **Paso 1: Reserva de Stock** ➡️ El ESB llama a `inventory-service` (`POST /inventory/reserve`). Se aparta el stock temporalmente.
+*   **Paso 2: Procesamiento del Pago** ➡️ El ESB calcula el monto y llama a `payment-service` (`POST /payments/charge`).
+*   **Paso 3 (Flujo Feliz): Confirmación** ➡️ Si el pago es aprobado, el ESB completa el checkout y llama a `notification-service` (`POST /notifications/send`) para enviar el correo de confirmación.
+
+### 2. Transacción de Compensación (Compensating Transaction)
+Si el **Paso 2 (Pago)** falla (por ejemplo, fondos insuficientes o tarjeta declinada):
+1.  La Saga detecta el error en el orquestador (bloque catch).
+2.  El ESB ejecuta una **transacción de compensación** (rollback lógico) llamando a `inventory-service` (`POST /inventory/release`) para liberar y reintegrar el stock que había sido apartado en el paso 1.
+3.  El ESB solicita enviar una alerta de fallo al usuario final (`POST /notifications/send`).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente
+    participant ESB as ESB (Bus de Servicios)
+    participant IS as Servicio de Inventario
+    participant PS as Servicio de Pagos
+    participant NS as Servicio de Notificación
+
+    Cliente->>ESB: Enviar Pedido (items, tarjeta, email)
+    ESB->>IS: Reservar Stock (POST /inventory/reserve)
+    alt Stock no disponible
+        IS-->>ESB: Error de Stock (400)
+        ESB->>NS: Enviar Notificación de Fallo (Stock Insuficiente)
+        ESB-->>Cliente: Checkout Fallido (Sin Stock)
+    else Stock reservado exitosamente (200)
+        IS-->>ESB: Confirmación de Reserva
+        ESB->>PS: Procesar Pago (POST /payments/charge)
+        alt Pago Rechazado (Fondos insuficientes, etc)
+            PS-->>ESB: Pago Fallido (402)
+            Note over ESB,IS: Transacción de Compensación (Rollback)
+            ESB->>IS: Liberar Stock Reservado (POST /inventory/release)
+            IS-->>ESB: Stock Liberado
+            ESB->>NS: Enviar Notificación de Fallo (Pago Declinado)
+            ESB-->>Cliente: Checkout Fallido (Pago Rechazado)
+        else Pago Aprobado (200)
+            PS-->>ESB: Transacción Exitosa
+            ESB->>NS: Enviar Notificación de Éxito (Factura / Confirmación)
+            ESB-->>Cliente: Compra Exitosa (Orden ID)
+        end
+    end
+```
 
 ---
 
